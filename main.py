@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
 AIForeman - Local AI Services Manager
-Version: 0.1.0 (Alpha)
-Author: Grok + User
-Date: 2026-05-10
+Version: 0.2.0
+Goal: Clean, modular GUI to manage local AI stack
 
-Main GUI entry point for managing local AI stack (Ollama, Open WebUI, etc.)
+Layout:
+- Top: Menu + Tabs
+- Middle: Service-specific panel (changes per tab)
+- Bottom: Console/Log output
 """
 
 import customtkinter as ctk
+import tkinter as tk
 from tkinter import ttk
 import psutil
 import subprocess
@@ -16,97 +19,141 @@ import json
 import os
 from datetime import datetime
 
-# ================================================
-# CONFIGURATION
-# ================================================
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
+
 
 class AIForeman(ctk.CTk):
     def __init__(self):
         super().__init__()
 
         self.title("AIForeman - Local AI Manager")
-        self.geometry("1200x800")
-        self.minsize(1000, 700)
+        self.geometry("1280x820")
+        self.minsize(1100, 700)
 
-        # Load config
         self.config = self.load_config()
+        self.current_processes = {}
 
         self.build_ui()
 
     def load_config(self):
-        """Load or create configuration"""
         config_path = "config.json"
-        default_config = {
-            "version": "0.1.0",
+        default = {
+            "version": "0.2.0",
             "last_updated": datetime.now().isoformat(),
             "services": {}
         }
-
         if os.path.exists(config_path):
             try:
                 with open(config_path, 'r') as f:
                     return json.load(f)
             except:
-                return default_config
-        else:
-            with open(config_path, 'w') as f:
-                json.dump(default_config, f, indent=2)
-            return default_config
+                pass
+        with open(config_path, 'w') as f:
+            json.dump(default, f, indent=2)
+        return default
 
     def build_ui(self):
-        """Build the main interface"""
-        # Title
-        title = ctk.CTkLabel(self, text="AIForeman", font=ctk.CTkFont(size=28, weight="bold"))
-        title.pack(pady=20)
+        """Main UI Layout"""
 
-        subtitle = ctk.CTkLabel(self, text="Local AI Services Manager", font=ctk.CTkFont(size=16))
-        subtitle.pack(pady=(0, 30))
+        # ==================== TOP MENU ====================
+        menubar = tk.Menu(self)
+        self.config(menu=menubar)
 
-        # ================================================
-        # STATUS FRAME
-        # ================================================
-        status_frame = ctk.CTkFrame(self)
-        status_frame.pack(fill="x", padx=20, pady=10)
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Exit", command=self.quit)
 
-        ctk.CTkLabel(status_frame, text="System Status", font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w", padx=20, pady=10)
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="About", command=lambda: print("AIForeman v0.2.0"))
 
-        # We'll add service status widgets here in next iterations
+        # ==================== TABS ====================
+        self.tabview = ctk.CTkTabview(self)
+        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Placeholder for now
-        placeholder = ctk.CTkLabel(status_frame, text="→ Services will appear here", text_color="gray")
-        placeholder.pack(pady=30)
+        # Tab 1: Ollama
+        self.tab_ollama = self.tabview.add("Ollama")
+        self.build_ollama_tab(self.tab_ollama)
 
-        # ================================================
-        # CONTROL BUTTONS
-        # ================================================
-        btn_frame = ctk.CTkFrame(self)
-        btn_frame.pack(fill="x", padx=20, pady=20)
+        # Tab 2: Open WebUI
+        self.tab_webui = self.tabview.add("Open WebUI")
+        self.build_webui_tab(self.tab_webui)
 
-        ctk.CTkButton(btn_frame, text="Start Ollama", width=200, height=40, 
-                     command=self.start_ollama).pack(side="left", padx=10)
-        
-        ctk.CTkButton(btn_frame, text="Stop Ollama", width=200, height=40, 
-                     fg_color="red", command=self.stop_ollama).pack(side="left", padx=10)
+        # Future tabs can be added easily here
+        # self.tab_openclaw = self.tabview.add("OpenClaw")
 
-        # TODO: Add more service buttons later
+        # ==================== BOTTOM CONSOLE ====================
+        console_frame = ctk.CTkFrame(self, height=200)
+        console_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        ctk.CTkLabel(console_frame, text="Console / Log Output", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=5)
+
+        self.console = ctk.CTkTextbox(console_frame, height=180)
+        self.console.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        self.log("AIForeman v0.2.0 started successfully.")
+
+    def log(self, message):
+        """Print to console window"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.console.insert("end", f"[{timestamp}] {message}\n")
+        self.console.see("end")
+
+    # ====================== OLLAMA TAB ======================
+    def build_ollama_tab(self, parent):
+        frame = ctk.CTkFrame(parent)
+        frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        ctk.CTkLabel(frame, text="Ollama Service", font=ctk.CTkFont(size=20, weight="bold")).pack(pady=10)
+
+        btn_frame = ctk.CTkFrame(frame)
+        btn_frame.pack(pady=20)
+
+        ctk.CTkButton(btn_frame, text="Start Ollama", width=180, height=50,
+                     command=self.start_ollama).pack(side="left", padx=15)
+
+        ctk.CTkButton(btn_frame, text="Stop Ollama", width=180, height=50, fg_color="red",
+                     command=self.stop_ollama).pack(side="left", padx=15)
 
     def start_ollama(self):
-        """Start Ollama service"""
         try:
-            subprocess.Popen(["ollama", "serve"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            print("Ollama started")
+            subprocess.Popen(["ollama", "serve"])
+            self.log("Ollama start command issued.")
         except Exception as e:
-            print(f"Error starting Ollama: {e}")
+            self.log(f"Error starting Ollama: {e}")
 
     def stop_ollama(self):
-        """Stop Ollama"""
         try:
             subprocess.run(["pkill", "-9", "-f", "ollama serve"], check=False)
-            print("Ollama stopped")
+            self.log("Ollama stop command sent.")
         except Exception as e:
-            print(f"Error stopping Ollama: {e}")
+            self.log(f"Error stopping Ollama: {e}")
+
+    # ====================== WEBUI TAB ======================
+    def build_webui_tab(self, parent):
+        frame = ctk.CTkFrame(parent)
+        frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        ctk.CTkLabel(frame, text="Open WebUI (Docker)", font=ctk.CTkFont(size=20, weight="bold")).pack(pady=10)
+
+        btn_frame = ctk.CTkFrame(frame)
+        btn_frame.pack(pady=20)
+
+        ctk.CTkButton(btn_frame, text="Start WebUI", width=180, height=50,
+                     command=self.start_webui).pack(side="left", padx=15)
+
+        ctk.CTkButton(btn_frame, text="Stop WebUI", width=180, height=50, fg_color="red",
+                     command=self.stop_webui).pack(side="left", padx=15)
+
+    def start_webui(self):
+        self.log("Starting Open WebUI (Docker)...")
+        # We'll expand this with the full docker command later
+
+    def stop_webui(self):
+        self.log("Stopping Open WebUI...")
+        subprocess.run(["docker", "stop", "open-webui"], check=False)
 
 
 if __name__ == "__main__":
